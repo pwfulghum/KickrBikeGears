@@ -5,10 +5,22 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:KickrBikeGears"
         mc:Ignorable="d"
-        Title="Kickr Gears" Height="450" Width="800">
+        Title="Kickr Gears" Height="300" Width="400" 
+        WindowStyle="None"
+        Topmost="True" 
+        Background="DeepSkyBlue"
+        >
+    
     <Grid>
-        <Viewbox>
-            <TextBlock Text="{Binding Message, Mode=OneWay}"/>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <Viewbox Grid.Row="0">
+            <TextBlock Text="{Binding PowerString, Mode=OneWay}" FontWeight="Bold"/>
+        </Viewbox>
+        <Viewbox Grid.Row="1">
+            <TextBlock Text="{Binding GearsString, Mode=OneWay}" FontWeight="Bold"/>
         </Viewbox>
     </Grid>
 </Window>

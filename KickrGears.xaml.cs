@@ -22,31 +22,61 @@ namespace KickrBikeGears
         public MainWindow()
         {
             InitializeComponent();
+
             this.DataContext = this;
-            Message = "Scanning";
+            GearsString = "Scanning";
 
             Setup();
         }
 
-        public string _message;
-        public string Message
+        public string _gearsString;
+        public string GearsString
         {
             get
             {
-                return _message;
+                return _gearsString;
             }
             set
             {
-                _message = value;
+                _gearsString = value;
                 OnPropertyChanged();
             }
         }
+
+        public string _powerString;
+        public string PowerString
+        {
+            get
+            {
+                return _powerString;
+            }
+            set
+            {
+                _powerString = value;
+                OnPropertyChanged();
+            }
+        }
+
+
         ConcurrentBag<ulong> _btDevices = new ConcurrentBag<ulong>();
 
-        private static Guid _kickrBikeInfoServiceUUID = Guid.ParseExact("A026EE0D-0A7D-4AB3-97FA-F1500F9FEB8B", "d");
 
+        public enum GattServiceUuid : UInt16
+        {
+            None = 0,
+            DeviceInformation = 0x180A,
+            HeartRate = 0x180D,
+            UserData = 0x181C,
+            CyclingPower = 0x1818,
+            FitnessMachine = 0x1826
+        }
+
+        private static Guid _kickrBikeInfoServiceUUID = Guid.ParseExact("A026EE0D-0A7D-4AB3-97FA-F1500F9FEB8B", "d");
         private static Guid _kickrBikeGearsUUID = Guid.ParseExact("A026E03A-0A7D-4AB3-97FA-F1500F9FEB8B", "d");
         private static Guid _kickrBikeButtonStatusUUID = Guid.ParseExact("A026E03C-0A7D-4AB3-97FA-F1500F9FEB8B", "d");
+
+        private static Guid _cyclingPowerServiceUUID = GetSigUuid((ushort)0x1818);
+        private static Guid _cyclingPowerMeasurementUUID = GetSigUuid((ushort)0x2A63);
 
         private static Guid _kickrBikeGradeServiceUUID = Guid.ParseExact("A026EE0B-0A7D-4AB3-97FA-F1500F9FEB8B", "d");
         private static Guid _kickrBikeGradeUUID = Guid.ParseExact("A026E037-0A7D-4AB3-97FA-F1500F9FEB8B", "d");
@@ -54,6 +84,7 @@ namespace KickrBikeGears
         bool _bikeFound = false;
 
         GattCharacteristic _gears;
+        GattCharacteristic _cpm;
         GattCharacteristic _grade;
 
         object synclock = new object();
@@ -76,8 +107,19 @@ namespace KickrBikeGears
 
             if (!_bikeFound)
             {
-                UpdateMessage("No Bike");
+                UpdateGears("No Bike");
             }
+        }
+
+        public static Guid GetSigUuid(ushort specific)
+        {
+            var bluetoothBaseUuid = new Guid("00000000-0000-1000-8000-00805F9B34FB");
+
+            var bytes = bluetoothBaseUuid.ToByteArray();
+            bytes[0] = (byte)(specific & 255);
+            bytes[1] = (byte)(specific >> 8);
+
+            return new Guid(bytes);
         }
 
 
@@ -117,6 +159,7 @@ namespace KickrBikeGears
 
                             GattDeviceServicesResult gattDeviceServicesResult = await device.GetGattServicesAsync();
 
+
                             if ((gattDeviceServicesResult != null) && (gattDeviceServicesResult.Status == GattCommunicationStatus.Success))
                             {
                                 var result = await device.GetGattServicesForUuidAsync(_kickrBikeInfoServiceUUID);
@@ -125,14 +168,14 @@ namespace KickrBikeGears
                                 {
                                     var service = result.Services.FirstOrDefault();
 
-                                    if (service != null) 
+                                    if (service != null)
                                     {
                                         await service.OpenAsync(GattSharingMode.SharedReadAndWrite);
 
                                         GattCharacteristicsResult gcr = await service.GetCharacteristicsForUuidAsync(_kickrBikeGearsUUID);
 
-                                        if ((gcr != null) && (gcr.Characteristics.Count > 0) &&  (gcr.Status == GattCommunicationStatus.Success)) {
-
+                                        if ((gcr != null) && (gcr.Characteristics.Count > 0) && (gcr.Status == GattCommunicationStatus.Success))
+                                        {
                                             _gears = gcr.Characteristics.First();
 
                                             if (_gears != null)
@@ -156,7 +199,43 @@ namespace KickrBikeGears
                                         }
                                         else
                                         {
-                                            Debug.WriteLine($"Oops - {gcr.Status}");
+                                            Debug.WriteLine($"Oops - {gcr?.Status}");
+                                        }
+                                    }
+                                }
+                            }
+
+                            if ((gattDeviceServicesResult != null) && (gattDeviceServicesResult.Status == GattCommunicationStatus.Success))
+                            {
+                                var result = await device.GetGattServicesForUuidAsync(_cyclingPowerServiceUUID);
+
+                                if ((result != null) && (result.Status == GattCommunicationStatus.Success))
+                                {
+                                    var service = result.Services.FirstOrDefault();
+
+                                    if (service != null)
+                                    {
+                                        await service.OpenAsync(GattSharingMode.SharedReadAndWrite);
+
+                                        GattCharacteristicsResult gcr = await service.GetCharacteristicsForUuidAsync(_cyclingPowerMeasurementUUID);
+
+                                        if ((gcr != null) && (gcr.Characteristics.Count > 0) && (gcr.Status == GattCommunicationStatus.Success))
+                                        {
+
+                                            _cpm = gcr.Characteristics.First();
+
+                                            if (_cpm != null)
+                                            {
+                                                if (_cpm.CharacteristicProperties.HasFlag(GattCharacteristicProperties.Notify))
+                                                {
+                                                    _cpm.ValueChanged += PowerMeasumrent;
+                                                    await _cpm.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.Notify);
+                                                }
+                                            }
+                                        }
+                                        else
+                                        {
+                                            Debug.WriteLine($"Oops - {gcr?.Status}");
                                         }
                                     }
                                 }
@@ -171,6 +250,31 @@ namespace KickrBikeGears
             }
         }
 
+        private void PowerMeasumrent(GattCharacteristic sender, GattValueChangedEventArgs args)
+        {
+            try
+            {
+                ParsePowerData(args.CharacteristicValue.ToArray());
+            }
+            catch (Exception ex)
+            {
+            }
+        }
+
+        private void ParsePowerData(byte[] data)
+        {
+            if (data.Length >= 4)
+            {
+                // flags in first 2 bytes
+                // power in next 2 bytes
+
+                ushort power = (ushort)((ushort)data[3] << 8);
+                power |= (ushort)data[2];
+
+                UpdatePower(power);
+            }
+        }
+          
         private void ParseGearData(byte[] data)
         {
             if (data.Length > 5)
@@ -183,7 +287,7 @@ namespace KickrBikeGears
                 uint frontGearCount = data[4];
                 uint rearGearCount = data[5];
 
-                UpdateMessage($"{frontGear} - {rearGear}");
+                UpdateGears($"{frontGear} - {rearGear}");
             }
         }
 
@@ -199,10 +303,17 @@ namespace KickrBikeGears
             }
         }
 
-        private void UpdateMessage(string message)
+        private void UpdateGears(string message)
         {
             Application.Current.Dispatcher.Invoke(new Action(() => {
-                Message = message;
+                GearsString = message;
+            }));
+        }
+
+        private void UpdatePower(ushort power)
+        {
+            Application.Current.Dispatcher.Invoke(new Action(() => {
+                PowerString = power.ToString();
             }));
         }
 
