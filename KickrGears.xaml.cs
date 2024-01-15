@@ -149,7 +149,7 @@ namespace KickrBikeGears
 
             try
             {
-                if (localName != String.Empty)
+                if (localName.Contains("KICKR", StringComparison.InvariantCultureIgnoreCase))
                 {
                     bool found = false;
 
@@ -164,7 +164,7 @@ namespace KickrBikeGears
 
                     if (!found)
                     {
-                        Debug.WriteLine($"Found {localName}");
+                        Debug.WriteLine($"Discovering: {localName} - {btAddress}");
 
                         BluetoothLEDevice device = await BluetoothLEDevice.FromBluetoothAddressAsync(btAddress);
 
@@ -260,7 +260,7 @@ namespace KickrBikeGears
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"{ex}");
+                Debug.WriteLine($"Exception: {ex}");
             }
         }
 
