@@ -1,19 +1,16 @@
 ﻿using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Reflection.PortableExecutable;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Windows;
+using System.Windows.Media;
 
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.Advertisement;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;
 
 using System.Windows.Interop;
-
-using Windows.Storage.Streams;
-
 
 namespace KickrBikeGears
 {
@@ -32,7 +29,7 @@ namespace KickrBikeGears
             Setup();
         }
 
-        public string _gears;
+        private string _gears;
         public string Gears
         {
             get
@@ -46,7 +43,7 @@ namespace KickrBikeGears
             }
         }
 
-        public uint _power;
+        private uint _power;
         public uint Power
         {
             get
@@ -56,6 +53,43 @@ namespace KickrBikeGears
             set
             {
                 _power = value;
+                OnPropertyChanged();
+            }
+        }
+
+        private bool _locked;
+        public bool Locked
+        {
+            get
+            {
+                return _locked;
+            }
+            set
+            {
+                _locked = value;
+                if (_locked)
+                {
+                    LockedString = "\uE72E";
+                    tbLock.Foreground = new SolidColorBrush(Colors.Red);
+                } else
+                {
+                    tbLock.Foreground = new SolidColorBrush(Colors.Green);
+                    LockedString = "\uE785";
+                }
+                OnPropertyChanged();
+            }
+        }
+
+        string _lockedString;
+        public string LockedString
+        {
+            get
+            {
+                return _lockedString;
+            }
+            set
+            {
+                _lockedString = value;
                 OnPropertyChanged();
             }
         }
@@ -210,8 +244,6 @@ namespace KickrBikeGears
                                             {
                                                 _gearsCharacteristic.ValueChanged += GearsValueChanged;
                                                 await _gearsCharacteristic.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.Notify);
-
-                                                _bikeFound = true;
                                             }
                                         }
                                     }
@@ -221,6 +253,48 @@ namespace KickrBikeGears
                                         Debug.WriteLine($"Oops - {gcr?.Status}");
                                     }
                                 }
+
+
+                                service = gattDeviceServicesResult.Services.FirstOrDefault(e => e.Uuid == _kickrBikeGradeServiceUUID);
+
+                                if (service != null)
+                                {
+                                    Debug.WriteLine($"Service Sharing: {service.SharingMode}");
+
+                                    await service.OpenAsync(GattSharingMode.SharedReadAndWrite);
+
+                                    Debug.WriteLine($"Service Sharing: {service.SharingMode}");
+
+                                    GattCharacteristicsResult gcr = await service.GetCharacteristicsForUuidAsync(_kickrBikeGradeUUID);
+
+                                    if ((gcr != null) && (gcr.Characteristics.Count > 0) && (gcr.Status == GattCommunicationStatus.Success))
+                                    {
+                                        _gradeCharacteristic = gcr.Characteristics.First();
+
+                                        if (_gradeCharacteristic != null)
+                                        {
+                                            if (_gradeCharacteristic.CharacteristicProperties.HasFlag(GattCharacteristicProperties.Read))
+                                            {
+                                                var val = await _gradeCharacteristic.ReadValueAsync();
+                                                if (val.Status == GattCommunicationStatus.Success)
+                                                {
+                                                    ParseGradeData(val.Value.ToArray());
+                                                }
+                                            }
+                                            if (_gradeCharacteristic.CharacteristicProperties.HasFlag(GattCharacteristicProperties.Notify))
+                                            {
+                                                _gradeCharacteristic.ValueChanged += GradeValueChanged;
+                                                await _gradeCharacteristic.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.Notify);
+                                            }
+                                        }
+                                    }
+                                    else
+                                    {
+                                        UpdateGears("No Access");
+                                        Debug.WriteLine($"Oops - {gcr?.Status}");
+                                    }
+                                }
+
 
 #if false
                                 // No longer needed...
@@ -305,12 +379,32 @@ namespace KickrBikeGears
             }
         }
 
+        private void ParseGradeData(byte[] data)
+        {
+            if ((data.Length == 3) && (data[0] == 0xfd) && (data[1] == 0x33))
+            {
+                bool locked = data[2] == 0x1;
+                UpdateLock(locked);
+            }
+        }
+
 
         private void GearsValueChanged(GattCharacteristic sender, GattValueChangedEventArgs args)
         {
             try
             {
                 ParseGearData(args.CharacteristicValue.ToArray());
+            }
+            catch (Exception ex)
+            {
+            }
+        }
+
+        private void GradeValueChanged(GattCharacteristic sender, GattValueChangedEventArgs args)
+        {
+            try
+            {
+                ParseGradeData(args.CharacteristicValue.ToArray());
             }
             catch (Exception ex)
             {
@@ -340,6 +434,19 @@ namespace KickrBikeGears
                 Application.Current.Dispatcher.Invoke(new Action(() =>
                 {
                     Power = power;
+                }));
+            }
+            catch { };
+        }
+
+        private void UpdateLock(bool locked)
+        {
+            if (_closing) return;
+            try
+            {
+                Application.Current.Dispatcher.Invoke(new Action(() =>
+                {
+                    Locked = locked;
                 }));
             }
             catch { };

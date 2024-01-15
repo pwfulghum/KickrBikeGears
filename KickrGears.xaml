@@ -8,7 +8,7 @@
         Title="Kickr Gears" Height="200" Width="400" 
         WindowStyle="None"
         Topmost="True" 
-        Background="DeepSkyBlue"
+        Background="#1192cc"
         >
     <Window.Resources>
         <Style TargetType="Button" x:Key="SquareButton">
@@ -37,8 +37,11 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        <Viewbox Grid.Row="0">
-            <TextBlock Text="{Binding Gears, Mode=OneWay}" FontWeight="Bold" Foreground="Black" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        <Viewbox Grid.Row="0" >
+            <DockPanel>
+                <TextBlock x:Name="tbLock" Text="{Binding LockedString, Mode=OneWay}" FontFamily="Segoe MDL2 Assets" FontSize="30" Foreground="Black" HorizontalAlignment="Right" VerticalAlignment="Center" DockPanel.Dock="Right" Margin="5,0,5,0"/>
+                <TextBlock x:Name="tbGears" Text="{Binding Gears, Mode=OneWay}" FontWeight="Bold" Foreground="Black" FontSize="60" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="20,0,20,0" Padding="0"/>
+            </DockPanel>
         </Viewbox>
         <Button Grid.Row="0" Content="X" HorizontalAlignment="Right" VerticalAlignment="Top" FontSize="14" Click="CloseAppClick" Margin="0" Padding="0" Style="{StaticResource SquareButton}" />
 
