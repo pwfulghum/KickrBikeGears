@@ -2,12 +2,15 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Reflection.PortableExecutable;
+using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Windows;
 
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.Advertisement;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;
+
+using System.Windows.Interop;
 
 using Windows.Storage.Streams;
 
@@ -24,42 +27,43 @@ namespace KickrBikeGears
             InitializeComponent();
 
             this.DataContext = this;
-            GearsString = "Scanning";
+            Gears = "Scanning";
 
             Setup();
         }
 
-        public string _gearsString;
-        public string GearsString
+        public string _gears;
+        public string Gears
         {
             get
             {
-                return _gearsString;
+                return _gears;
             }
             set
             {
-                _gearsString = value;
+                _gears = value;
                 OnPropertyChanged();
             }
         }
 
-        public string _powerString;
-        public string PowerString
+        public uint _power;
+        public uint Power
         {
             get
             {
-                return _powerString;
+                return _power;
             }
             set
             {
-                _powerString = value;
+                _power = value;
                 OnPropertyChanged();
             }
         }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
 
 
         ConcurrentBag<ulong> _btDevices = new ConcurrentBag<ulong>();
-
 
         public enum GattServiceUuid : UInt16
         {
@@ -82,14 +86,13 @@ namespace KickrBikeGears
         private static Guid _kickrBikeGradeUUID = Guid.ParseExact("A026E037-0A7D-4AB3-97FA-F1500F9FEB8B", "d");
 
         bool _bikeFound = false;
+        bool _closing = false;
 
-        GattCharacteristic _gears;
-        GattCharacteristic _cpm;
-        GattCharacteristic _grade;
+        GattCharacteristic _gearsCharacteristic;
+        GattCharacteristic _powerCharacteristic;
+        GattCharacteristic _gradeCharacteristic;
 
         object synclock = new object();
-
-        public event PropertyChangedEventHandler? PropertyChanged;
 
         private async Task Setup()
         {
@@ -101,7 +104,21 @@ namespace KickrBikeGears
             watcher.Received += Watcher_Received;
             watcher.Start();
 
-            await Task.Delay(30000);
+            int timeout = 60;
+
+            while (timeout > 0)
+            {
+                await Task.Delay(1000);
+
+                if (_bikeFound)
+                {
+                    break;
+                }
+
+                UpdateGears($"Scan {timeout}");
+
+                timeout--;
+            }
 
             watcher.Stop();
 
@@ -159,86 +176,83 @@ namespace KickrBikeGears
 
                             GattDeviceServicesResult gattDeviceServicesResult = await device.GetGattServicesAsync();
 
-
                             if ((gattDeviceServicesResult != null) && (gattDeviceServicesResult.Status == GattCommunicationStatus.Success))
                             {
-                                var result = await device.GetGattServicesForUuidAsync(_kickrBikeInfoServiceUUID);
+                                var service = gattDeviceServicesResult.Services.FirstOrDefault(e => e.Uuid == _kickrBikeInfoServiceUUID);
 
-                                if ((result != null) && (result.Status == GattCommunicationStatus.Success))
+                                if (service != null)
                                 {
-                                    var service = result.Services.FirstOrDefault();
+                                    Debug.WriteLine($"Service Sharing: {service.SharingMode}");
 
-                                    if (service != null)
+                                    await service.OpenAsync(GattSharingMode.SharedReadAndWrite);
+
+                                    Debug.WriteLine($"Service Sharing: {service.SharingMode}");
+
+                                    _bikeFound = true;
+
+                                    GattCharacteristicsResult gcr = await service.GetCharacteristicsForUuidAsync(_kickrBikeGearsUUID);
+
+                                    if ((gcr != null) && (gcr.Characteristics.Count > 0) && (gcr.Status == GattCommunicationStatus.Success))
                                     {
-                                        await service.OpenAsync(GattSharingMode.SharedReadAndWrite);
+                                        _gearsCharacteristic = gcr.Characteristics.First();
 
-                                        GattCharacteristicsResult gcr = await service.GetCharacteristicsForUuidAsync(_kickrBikeGearsUUID);
-
-                                        if ((gcr != null) && (gcr.Characteristics.Count > 0) && (gcr.Status == GattCommunicationStatus.Success))
+                                        if (_gearsCharacteristic != null)
                                         {
-                                            _gears = gcr.Characteristics.First();
-
-                                            if (_gears != null)
+                                            if (_gearsCharacteristic.CharacteristicProperties.HasFlag(GattCharacteristicProperties.Read))
                                             {
-                                                if (_gears.CharacteristicProperties.HasFlag(GattCharacteristicProperties.Read))
+                                                var val = await _gearsCharacteristic.ReadValueAsync();
+                                                if (val.Status == GattCommunicationStatus.Success)
                                                 {
-                                                    var val = await _gears.ReadValueAsync();
-                                                    if (val.Status == GattCommunicationStatus.Success)
-                                                    {
-                                                        ParseGearData(val.Value.ToArray());
-                                                    }
-                                                }
-                                                if (_gears.CharacteristicProperties.HasFlag(GattCharacteristicProperties.Notify))
-                                                {
-                                                    _gears.ValueChanged += GearsValueChanged;
-                                                    await _gears.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.Notify);
-
-                                                    _bikeFound = true;
+                                                    ParseGearData(val.Value.ToArray());
                                                 }
                                             }
-                                        }
-                                        else
-                                        {
-                                            Debug.WriteLine($"Oops - {gcr?.Status}");
-                                        }
-                                    }
-                                }
-                            }
-
-                            if ((gattDeviceServicesResult != null) && (gattDeviceServicesResult.Status == GattCommunicationStatus.Success))
-                            {
-                                var result = await device.GetGattServicesForUuidAsync(_cyclingPowerServiceUUID);
-
-                                if ((result != null) && (result.Status == GattCommunicationStatus.Success))
-                                {
-                                    var service = result.Services.FirstOrDefault();
-
-                                    if (service != null)
-                                    {
-                                        await service.OpenAsync(GattSharingMode.SharedReadAndWrite);
-
-                                        GattCharacteristicsResult gcr = await service.GetCharacteristicsForUuidAsync(_cyclingPowerMeasurementUUID);
-
-                                        if ((gcr != null) && (gcr.Characteristics.Count > 0) && (gcr.Status == GattCommunicationStatus.Success))
-                                        {
-
-                                            _cpm = gcr.Characteristics.First();
-
-                                            if (_cpm != null)
+                                            if (_gearsCharacteristic.CharacteristicProperties.HasFlag(GattCharacteristicProperties.Notify))
                                             {
-                                                if (_cpm.CharacteristicProperties.HasFlag(GattCharacteristicProperties.Notify))
-                                                {
-                                                    _cpm.ValueChanged += PowerMeasumrent;
-                                                    await _cpm.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.Notify);
-                                                }
+                                                _gearsCharacteristic.ValueChanged += GearsValueChanged;
+                                                await _gearsCharacteristic.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.Notify);
+
+                                                _bikeFound = true;
                                             }
                                         }
-                                        else
-                                        {
-                                            Debug.WriteLine($"Oops - {gcr?.Status}");
-                                        }
+                                    }
+                                    else
+                                    {
+                                        UpdateGears("No Access");
+                                        Debug.WriteLine($"Oops - {gcr?.Status}");
                                     }
                                 }
+
+#if false
+                                // No longer needed...
+
+                                service = gattDeviceServicesResult.Services.FirstOrDefault(e => e.Uuid == _cyclingPowerServiceUUID);
+
+                                if (service != null)
+                                {
+                                    await service.OpenAsync(GattSharingMode.SharedReadAndWrite);
+
+                                    GattCharacteristicsResult gcr = await service.GetCharacteristicsForUuidAsync(_cyclingPowerMeasurementUUID);
+
+                                    if ((gcr != null) && (gcr.Characteristics.Count > 0) && (gcr.Status == GattCommunicationStatus.Success))
+                                    {
+
+                                        _powerCharacteristic = gcr.Characteristics.First();
+
+                                        if (_powerCharacteristic != null)
+                                        {
+                                            if (_powerCharacteristic.CharacteristicProperties.HasFlag(GattCharacteristicProperties.Notify))
+                                            {
+                                                _powerCharacteristic.ValueChanged += PowerMeasumrent;
+                                                await _powerCharacteristic.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.Notify);
+                                            }
+                                        }
+                                    }
+                                    else
+                                    {
+                                        Debug.WriteLine($"Oops - {gcr?.Status}");
+                                    }
+                                }
+#endif 
                             }
                         }
                     }
@@ -303,18 +317,32 @@ namespace KickrBikeGears
             }
         }
 
-        private void UpdateGears(string message)
+        private void UpdateGears(string gearString)
         {
-            Application.Current.Dispatcher.Invoke(new Action(() => {
-                GearsString = message;
-            }));
+            if (_closing) return;
+
+            try
+            {
+                Application.Current.Dispatcher.Invoke(new Action(() =>
+                {
+                    Gears = gearString;
+                }));
+            }
+            catch { };
         }
 
         private void UpdatePower(ushort power)
         {
-            Application.Current.Dispatcher.Invoke(new Action(() => {
-                PowerString = power.ToString();
-            }));
+            if (_closing) return;
+
+            try
+            {
+                Application.Current.Dispatcher.Invoke(new Action(() =>
+                {
+                    Power = power;
+                }));
+            }
+            catch { };
         }
 
         protected void OnPropertyChanged(
@@ -322,5 +350,71 @@ namespace KickrBikeGears
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
+
+        private void CloseAppClick(object sender, RoutedEventArgs e)
+        {
+            _closing = true;
+            App.Current.Shutdown();
+        }
+
+
+        protected override void OnSourceInitialized(EventArgs e)
+        {
+            base.OnSourceInitialized(e);
+
+            try
+            {
+                // Load window placement details for previous application session from application settings
+                // Note - if window was closed on a monitor that is now disconnected from the computer,
+                //        SetWindowPlacement will place the window onto a visible monitor.
+                var wp = Settings.Default.WindowPlacement;
+                wp.length = Marshal.SizeOf(typeof(WindowPlacement));
+                wp.flags = 0;
+                wp.showCmd = (wp.showCmd == SwShowminimized ? SwShownormal : wp.showCmd);
+                var hwnd = new WindowInteropHelper(this).Handle;
+
+                if ((wp.normalPosition.Top == 0) && 
+                    (wp.normalPosition.Bottom == 0) &&
+                    (wp.normalPosition.Left == 0) &&
+                    (wp.normalPosition.Right ==0))
+                {
+                    // Don't place it.
+                }
+                else
+                {
+                    SetWindowPlacement(hwnd, ref wp);
+                }
+            }
+            catch
+            {
+                // ignored
+            }
+        }
+
+        // WARNING - Not fired when Application.SessionEnding is fired
+        protected override void OnClosing(CancelEventArgs e)
+        {
+            base.OnClosing(e);
+
+            // Persist window placement details to application settings
+            WindowPlacement wp;
+            var hwnd = new WindowInteropHelper(this).Handle;
+            GetWindowPlacement(hwnd, out wp);
+            Settings.Default.WindowPlacement = wp;
+            Settings.Default.Save();
+        }
+
+        #region Win32 API declarations to set and get window placement
+
+        [DllImport("user32.dll")]
+        private static extern bool SetWindowPlacement(IntPtr hWnd, [In] ref WindowPlacement lpwndpl);
+
+        [DllImport("user32.dll")]
+        private static extern bool GetWindowPlacement(IntPtr hWnd, out WindowPlacement lpwndpl);
+
+        private const int SwShownormal = 1;
+        private const int SwShowminimized = 2;
+
+        #endregion
     }
 }

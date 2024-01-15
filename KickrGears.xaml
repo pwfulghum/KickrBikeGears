@@ -5,22 +5,50 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:KickrBikeGears"
         mc:Ignorable="d"
-        Title="Kickr Gears" Height="300" Width="400" 
+        Title="Kickr Gears" Height="200" Width="400" 
         WindowStyle="None"
         Topmost="True" 
         Background="DeepSkyBlue"
         >
+    <Window.Resources>
+        <Style TargetType="Button" x:Key="SquareButton">
+            <Setter Property="MinWidth" Value="{Binding ActualHeight, RelativeSource={RelativeSource Self}}" />
+            <Setter Property="MinHeight" Value="{Binding ActualWidth, RelativeSource={RelativeSource Self}}" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0" />
+        </Style>
+    </Window.Resources>
     
     <Grid>
+        <!-- V2 -->
+        <!--
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
         <Viewbox Grid.Row="0">
-            <TextBlock Text="{Binding PowerString, Mode=OneWay}" FontWeight="Bold"/>
+            <TextBlock Text="{Binding Power, Mode=OneWay}" FontWeight="Bold"/>
         </Viewbox>
         <Viewbox Grid.Row="1">
-            <TextBlock Text="{Binding GearsString, Mode=OneWay}" FontWeight="Bold"/>
+            <TextBlock Text="{Binding Gears, Mode=OneWay}" FontWeight="Bold"/>
         </Viewbox>
+        -->
+        <!-- V3 -->
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <Viewbox Grid.Row="0">
+            <TextBlock Text="{Binding Gears, Mode=OneWay}" FontWeight="Bold" Foreground="Black" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Viewbox>
+        <Button Grid.Row="0" Content="X" HorizontalAlignment="Right" VerticalAlignment="Top" FontSize="14" Click="CloseAppClick" Margin="0" Padding="0" Style="{StaticResource SquareButton}" />
+
+        <!--
+        <Viewbox Grid.Row="1">
+            <TextBlock Text="{Binding PowerAverage, Mode=OneWay}" FontWeight="Bold" Foreground="Black" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Viewbox>
+        <Button Grid.Row="1" Content="↺" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="14" FontFamily="Segoe UI Symbol" Click="Button_Click" Margin="0" Padding="0" Style="{StaticResource SquareButton}" />
+        -->
+
+
     </Grid>
 </Window>
