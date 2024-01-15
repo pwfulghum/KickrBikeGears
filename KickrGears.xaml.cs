@@ -98,7 +98,7 @@ namespace KickrBikeGears
         {
             var watcher = new BluetoothLEAdvertisementWatcher()
             {
-                ScanningMode = BluetoothLEScanningMode.Passive
+                ScanningMode = BluetoothLEScanningMode.Active
             };
 
             watcher.Received += Watcher_Received;
